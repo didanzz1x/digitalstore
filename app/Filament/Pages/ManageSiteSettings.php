@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -145,7 +146,7 @@ class ManageSiteSettings extends Page implements HasForms
                             ->label('Aktifkan Eqris (Orkut/Gomerch)')
                             ->default(false)
                             ->helperText('eqris.com QRIS dinamis — pakai polling karena tidak ada webhook.'),
-                        \Filament\Forms\Components\Select::make('payment_default_gateway')
+                        Select::make('payment_default_gateway')
                             ->label('Default Gateway')
                             ->options([
                                 'pakasir' => 'Pakasir',
@@ -160,6 +161,16 @@ class ManageSiteSettings extends Page implements HasForms
                     ->description('Slug project & API key Pakasir. Daftar di https://pakasir.com/p/docs untuk dapat kredensial. Akan override ENV (PAKASIR_PROJECT/PAKASIR_API_KEY) kalau diisi.')
                     ->columns(2)
                     ->schema([
+                        TextInput::make('pakasir_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Server 2')
+                            ->helperText('Nama yang ditampilkan ke buyer di halaman checkout. Contoh: "Server 2", "Pakasir", dll.')
+                            ->default('Pakasir'),
+                        TextInput::make('pakasir_subtitle')
+                            ->label('Subtitle / Deskripsi Singkat')
+                            ->placeholder('QRIS / VA / E-Wallet')
+                            ->helperText('Subtitle kecil di bawah nama gateway.')
+                            ->default('QRIS / VA / E-Wallet'),
                         TextInput::make('pakasir_project')
                             ->label('Project Slug')
                             ->placeholder('akhpremium')
@@ -194,6 +205,32 @@ class ManageSiteSettings extends Page implements HasForms
                     ->description('Konfigurasi eqris.com. Token API tunggal untuk semua endpoint. Orkut = QRIS Nobu Bank, Gomerch = QRIS dinamis multi-bank. Daftar di https://eqris.com/api-docs')
                     ->columns(2)
                     ->schema([
+                        TextInput::make('eqris_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Server 1')
+                            ->helperText('Nama gateway Eqris yang ditampilkan ke buyer. Contoh: "Server 1", "Eqris", dll.')
+                            ->default('Eqris'),
+                        TextInput::make('eqris_subtitle')
+                            ->label('Subtitle / Deskripsi Singkat')
+                            ->placeholder('QRIS Multi-Bank')
+                            ->default('QRIS Multi-Bank'),
+                        TextInput::make('eqris_orkut_display_name')
+                            ->label('Orkut — Display Name')
+                            ->placeholder('Orkut (NobuBank)')
+                            ->helperText('Nama metode Orkut. Contoh: "Orkut", "NobuBank QRIS", dll.')
+                            ->default('Orkut (NobuBank)'),
+                        TextInput::make('eqris_orkut_subtitle')
+                            ->label('Orkut — Subtitle')
+                            ->placeholder('QRIS via NobuBank')
+                            ->default('QRIS via NobuBank'),
+                        TextInput::make('eqris_gomerch_display_name')
+                            ->label('Gomerch — Display Name')
+                            ->placeholder('Gomerch (Multi-Bank)')
+                            ->default('Gomerch (Multi-Bank)'),
+                        TextInput::make('eqris_gomerch_subtitle')
+                            ->label('Gomerch — Subtitle')
+                            ->placeholder('QRIS Multi-Bank dinamis')
+                            ->default('QRIS Multi-Bank dinamis'),
                         TextInput::make('eqris_token_key')
                             ->label('Eqris Token API')
                             ->password()
@@ -275,6 +312,60 @@ class ManageSiteSettings extends Page implements HasForms
                             ->label('Hanya Untuk Member')
                             ->default(true)
                             ->helperText('Kalau ON, hanya member aktif yang bisa pakai saldo (sesuai promo "Checkout Bebas Fee — khusus member").'),
+                        TextInput::make('wallet_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Saldo Akun')
+                            ->default('Saldo Akun'),
+                        TextInput::make('wallet_subtitle')
+                            ->label('Subtitle')
+                            ->placeholder('Bebas fee — pakai saldo deposit')
+                            ->default('Bebas fee — pakai saldo deposit'),
+                    ]),
+
+                Section::make('Self-Service Top Up Saldo')
+                    ->description('User logged-in bisa top-up saldo sendiri tanpa approval admin. Setelah pembayaran terkonfirmasi, saldo otomatis bertambah.')
+                    ->columns(3)
+                    ->schema([
+                        Toggle::make('wallet_topup_enabled')
+                            ->label('Aktifkan Top Up')
+                            ->default(true)
+                            ->columnSpanFull(),
+                        TextInput::make('wallet_topup_min')
+                            ->label('Minimum Top Up (Rp)')
+                            ->numeric()
+                            ->minValue(1000)
+                            ->default(10000),
+                        TextInput::make('wallet_topup_max')
+                            ->label('Maksimum Top Up (Rp)')
+                            ->numeric()
+                            ->minValue(10000)
+                            ->default(5000000),
+                    ]),
+
+                Section::make('Daftar Akun Berbayar (Register Paywall)')
+                    ->description('Kalau aktif, halaman /register akan meminta pembayaran via QRIS sebelum akun aktif. User belum bisa login penuh sampai order register-activation PAID.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('register_paywall_enabled')
+                            ->label('Aktifkan Daftar Berbayar')
+                            ->default(false)
+                            ->helperText('Kalau OFF, register tetap gratis seperti biasa.')
+                            ->columnSpanFull(),
+                        TextInput::make('register_paywall_price')
+                            ->label('Harga Daftar (Rp)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->default(10000)
+                            ->helperText('Harga yang harus dibayar user baru sebelum akun aktif.'),
+                        TextInput::make('register_paywall_label')
+                            ->label('Label di Halaman Register')
+                            ->placeholder('Aktivasi Akun')
+                            ->default('Aktivasi Akun'),
+                        Textarea::make('register_paywall_description')
+                            ->label('Deskripsi (ditampilkan di form register)')
+                            ->rows(2)
+                            ->placeholder('Pendaftaran akun premium berbayar — bayar via QRIS untuk aktivasi.')
+                            ->columnSpanFull(),
                     ]),
 
                 Section::make('Program Affiliate (Komisi Referral)')

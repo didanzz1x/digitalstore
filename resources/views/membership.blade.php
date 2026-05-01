@@ -49,31 +49,14 @@
 
                 <form method="POST" action="{{ route('membership.subscribe') }}" class="mt-6 space-y-4">
                     @csrf
-                    @php
-                        $availableGateways = collect($gateways ?? [])->filter(fn ($g) => ! empty($g['enabled']) && ! empty($g['configured']));
-                    @endphp
-                    @if ($availableGateways->isNotEmpty())
-                        <div class="grid grid-cols-1 gap-2">
-                            @if ($availableGateways->has('pakasir'))
-                                <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 cursor-pointer">
-                                    <input type="radio" name="gateway" value="pakasir" @checked(($defaultGateway ?? 'pakasir') === 'pakasir')>
-                                    <span class="text-sm"><b>Pakasir</b> — QRIS / VA / E-Wallet</span>
-                                </label>
-                            @endif
-                            @if ($availableGateways->has('eqris'))
-                                <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 cursor-pointer">
-                                    <input type="radio" name="gateway" value="eqris" @checked(($defaultGateway ?? '') === 'eqris')>
-                                    <span class="text-sm"><b>Eqris</b> — QRIS Multi-Bank</span>
-                                </label>
-                            @endif
-                            @if ((int) $u->balance >= $price)
-                                <label class="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 cursor-pointer">
-                                    <input type="radio" name="gateway" value="wallet">
-                                    <span class="text-sm"><b>Saldo Akun</b> (saldo Rp {{ number_format((int) $u->balance, 0, ',', '.') }})</span>
-                                </label>
-                            @endif
-                        </div>
-                    @endif
+                    @include('_partials.gateway-selector', [
+                        'availableGateways' => $gateways ?? [],
+                        'defaultGateway' => $defaultGateway ?? null,
+                        'walletEligible' => true,
+                        'walletBalance' => (int) $u->balance,
+                        'walletAmountRequired' => (int) $price,
+                        'walletTopupEnabled' => (bool) ($site->wallet_topup_enabled ?? true),
+                    ])
 
                     <button type="submit" class="w-full rounded-xl btn-brand font-extrabold py-3 text-base">
                         Berlangganan Sekarang

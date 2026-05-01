@@ -55,6 +55,7 @@ class CheckoutController extends Controller
             'gateways' => $this->gateways->availability(),
             'defaultGateway' => $this->gateways->defaultGateway(),
             'walletEligible' => $this->isWalletEligible(),
+            'site' => SiteSetting::current(),
         ]);
     }
 

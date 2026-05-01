@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Order;
+use App\Models\SiteSetting;
 use App\Models\User;
 use App\Services\AffiliateService;
+use App\Services\PakasirService;
+use App\Services\PaymentGatewayManager;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,6 +49,22 @@ class AuthController extends Controller
                 ->withErrors(['email' => 'Email atau password salah.']);
         }
 
+        // Cek pending activation: user yang belum bayar register paywall
+        // boleh login tapi langsung diarahkan ke invoice yang belum lunas.
+        if (Auth::user()->is_pending_activation) {
+            $pendingOrder = Order::where('user_id', Auth::id())
+                ->where('is_register_activation', true)
+                ->whereIn('status', [Order::STATUS_PENDING])
+                ->latest()
+                ->first();
+            if ($pendingOrder) {
+                $request->session()->regenerate();
+
+                return redirect()->route('invoice.show', $pendingOrder->order_code)
+                    ->with('error', 'Selesaikan pembayaran aktivasi akun untuk mengakses fitur lengkap.');
+            }
+        }
+
         // Cek banned: kalau user di-ban, langsung logout + tampilkan alasan.
         if (Auth::user()->is_banned) {
             $reason = Auth::user()->ban_reason ?: 'Akun dinonaktifkan oleh admin.';
@@ -79,19 +99,37 @@ class AuthController extends Controller
             return redirect()->route('account.index');
         }
 
-        return view('auth.register');
+        $site = SiteSetting::current();
+
+        return view('auth.register', [
+            'site' => $site,
+            'paywallEnabled' => (bool) ($site->register_paywall_enabled ?? false) && (int) ($site->register_paywall_price ?? 0) > 0,
+            'paywallPrice' => (int) ($site->register_paywall_price ?? 0),
+            'paywallLabel' => $site->register_paywall_label ?: 'Aktivasi Akun',
+            'paywallDescription' => $site->register_paywall_description ?: 'Pendaftaran akun premium berbayar — bayar via QRIS untuk aktivasi.',
+            'gateways' => app(PaymentGatewayManager::class)->availability(),
+            'defaultGateway' => app(PaymentGatewayManager::class)->defaultGateway(),
+        ]);
     }
 
     /** POST /register */
     public function register(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $site = SiteSetting::current();
+        $paywallEnabled = (bool) ($site->register_paywall_enabled ?? false) && (int) ($site->register_paywall_price ?? 0) > 0;
+
+        $rules = [
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone' => ['required', 'string', 'max:32', 'regex:/^[0-9+\- ]+$/'],
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
             'ref' => ['nullable', 'string', 'max:32'],
-        ]);
+        ];
+        if ($paywallEnabled) {
+            $rules['gateway'] = ['required', 'string', 'in:pakasir,eqris'];
+            $rules['eqris_method'] = ['nullable', 'string', 'in:orkut,gomerch'];
+        }
+        $data = $request->validate($rules);
 
         // Resolve referrer dari (1) form 'ref' field kalau ada, (2) cookie/query yang sudah disimpan
         // saat user klik link referral sebelum daftar.
@@ -101,6 +139,19 @@ class AuthController extends Controller
                 $referrer = User::where('referral_code', strtoupper(trim($data['ref'])))->first();
             }
             $referrer ??= AffiliateService::resolveReferrerFromRequest($request, null);
+        }
+
+        // Untuk paywall flow, validasi gateway dulu sebelum bikin user (supaya error langsung balik ke form).
+        $resolvedGateway = null;
+        $resolvedMethod = null;
+        if ($paywallEnabled) {
+            $resolved = app(PaymentGatewayManager::class)->resolve($data['gateway'], $data['eqris_method'] ?? null);
+            if (! $resolved) {
+                return back()->withInput()->withErrors([
+                    'gateway' => 'Metode pembayaran tidak tersedia. Silakan pilih ulang.',
+                ]);
+            }
+            [$resolvedGateway, $resolvedMethod] = $resolved;
         }
 
         $user = User::create([
@@ -114,11 +165,53 @@ class AuthController extends Controller
         // Generate referral code unik untuk user baru — langsung tersedia di dashboard.
         $user->ensureReferralCode();
 
+        if ($paywallEnabled) {
+            $user->forceFill(['is_pending_activation' => true])->save();
+        }
+
         if ($referrer) {
             Audit::log('user.referred', $user, [
                 'referrer_id' => $referrer->id,
                 'referrer_email' => $referrer->email,
             ]);
+        }
+
+        // Paywall flow: buat Order register-activation + redirect ke invoice. User
+        // BELUM bisa login penuh; baru aktif setelah order PAID (hook di OrderFulfillment).
+        if ($paywallEnabled) {
+            $price = (int) ($site->register_paywall_price ?? 0);
+            $order = Order::create([
+                'order_code' => Order::generateOrderCode(),
+                'user_id' => $user->id,
+                'product_id' => null,
+                'product_variant_id' => null,
+                'customer_email' => $user->email,
+                'customer_phone' => $user->phone,
+                'amount' => $price,
+                'discount_amount' => 0,
+                'fee' => 0,
+                'total_payment' => $price,
+                'gateway' => $resolvedGateway,
+                'eqris_method' => $resolvedMethod,
+                'is_register_activation' => true,
+                'pay_with_balance' => false,
+                'status' => Order::STATUS_PENDING,
+                'source' => Order::SOURCE_WEB,
+                'expired_at' => now()->addMinutes(PakasirService::orderExpiryMinutes()),
+            ]);
+
+            Auth::login($user);
+            $request->session()->regenerate();
+
+            Audit::log('user.register_paywall_order', $user, [
+                'order_id' => $order->id,
+                'amount' => $price,
+                'gateway' => $resolvedGateway,
+            ]);
+
+            return redirect()
+                ->route('invoice.show', $order->order_code)
+                ->with('success', 'Akun dibuat. Selesaikan pembayaran untuk aktivasi.');
         }
 
         Auth::login($user);

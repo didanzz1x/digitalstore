@@ -50,6 +50,7 @@ class User extends Authenticatable implements FilamentUser
             'balance' => 'integer',
             'affiliate_balance' => 'integer',
             'is_member' => 'boolean',
+            'is_pending_activation' => 'boolean',
             'member_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
         ];

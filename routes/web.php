@@ -5,6 +5,7 @@ use App\Http\Controllers\AffiliateController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\DepositController;
 use App\Http\Controllers\FloatingNotificationController;
 use App\Http\Controllers\FonnteWebhookController;
 use App\Http\Controllers\FrontController;
@@ -119,6 +120,11 @@ Route::middleware('auth')->prefix('akun')->name('account.')->group(function () {
         ->middleware('throttle:6,1')->name('affiliate.transfer');
     Route::post('/affiliate/withdraw', [AffiliateController::class, 'withdraw'])
         ->middleware('throttle:6,1')->name('affiliate.withdraw');
+
+    // Self-service wallet top-up.
+    Route::get('/topup', [DepositController::class, 'show'])->name('topup.show');
+    Route::post('/topup', [DepositController::class, 'store'])
+        ->middleware('throttle:6,1')->name('topup.store');
 });
 
 // ======== Cart (hanya user login — guest pakai checkout instan) ========

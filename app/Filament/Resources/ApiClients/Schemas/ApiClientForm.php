@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ApiClients\Schemas;
 
+use App\Models\ApiClient;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -30,7 +31,7 @@ class ApiClientForm
             TextInput::make('api_key_prefix')
                 ->disabled()
                 ->dehydrated(false)
-                ->visible(fn (?\App\Models\ApiClient $record) => $record !== null)
+                ->visible(fn (?ApiClient $record) => $record !== null)
                 ->helperText('8 karakter pertama dari API key untuk identifikasi (raw key tidak ditampilkan).'),
         ]);
     }

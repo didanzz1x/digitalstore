@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\SiteSetting;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -235,7 +236,7 @@ class EqrisService
             // Optional: cek timing kalau date tersedia.
             if ($orderCreatedAt && ! empty($tx['date'])) {
                 try {
-                    $txTime = \Carbon\Carbon::parse((string) $tx['date']);
+                    $txTime = Carbon::parse((string) $tx['date']);
                     if ($txTime->isBefore($orderCreatedAt)) {
                         continue;
                     }

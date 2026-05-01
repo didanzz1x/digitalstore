@@ -25,6 +25,9 @@
                             ['account.profile', 'Profil & Password', '⚙️'],
                             ['account.telegram.show', 'Hubungkan Telegram', '✈️'],
                         ];
+                        if ($site->wallet_topup_enabled ?? true) {
+                            $items[] = ['account.topup.show', 'Top Up Saldo', '💳'];
+                        }
                         if ($site->affiliate_enabled ?? false) {
                             $items[] = ['account.affiliate.dashboard', 'Affiliate', '💰'];
                         }

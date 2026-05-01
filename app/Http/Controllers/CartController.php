@@ -49,7 +49,9 @@ class CartController extends Controller
         $defaultGateway = $this->gateways->defaultGateway();
         $walletEligible = $this->isWalletEligible();
 
-        return view('cart.index', compact('items', 'gateways', 'defaultGateway', 'walletEligible'));
+        $site = SiteSetting::current();
+
+        return view('cart.index', compact('items', 'gateways', 'defaultGateway', 'walletEligible', 'site'));
     }
 
     public function add(Request $request): RedirectResponse|JsonResponse

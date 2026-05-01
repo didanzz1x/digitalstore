@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Support\Audit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -77,7 +78,7 @@ class AffiliateService
      * Resolve referrer dari cookie + (optional) query param. Return null kalau
      * code tidak valid atau pointing ke user sendiri.
      */
-    public static function resolveReferrerFromRequest(\Illuminate\Http\Request $request, ?int $excludeUserId = null): ?User
+    public static function resolveReferrerFromRequest(Request $request, ?int $excludeUserId = null): ?User
     {
         $code = (string) ($request->query('ref', '') ?: $request->cookie(self::COOKIE_NAME, ''));
         if ($code === '') {

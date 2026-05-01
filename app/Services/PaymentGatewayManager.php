@@ -18,12 +18,9 @@ class PaymentGatewayManager
     ) {}
 
     /**
+     * Availability per gateway plus display metadata yang dipakai blade UI.
+     *
      * @return array<string, array<string, mixed>>
-     *                                             Format: [
-     *                                             'pakasir' => ['enabled'=>bool,'configured'=>bool,'methods'=>['qris'=>true,...]],
-     *                                             'eqris'   => ['enabled'=>bool,'configured'=>bool,'methods'=>['orkut'=>true,'gomerch'=>false]],
-     *                                             'wallet'  => ['enabled'=>bool,'members_only'=>bool],
-     *                                             ]
      */
     public function availability(): array
     {
@@ -33,26 +30,62 @@ class PaymentGatewayManager
             Order::GATEWAY_PAKASIR => [
                 'enabled' => (bool) ($site->pakasir_enabled ?? true) && $this->pakasir->isConfigured(),
                 'configured' => $this->pakasir->isConfigured(),
+                'label' => $site->pakasir_display_name ?: 'Pakasir',
+                'subtitle' => $site->pakasir_subtitle ?: 'QRIS / VA / E-Wallet',
                 'methods' => [
-                    'qris' => true,
-                    'va' => ! ($site->pakasir_qris_only ?? false),
-                    'ewallet' => ! ($site->pakasir_qris_only ?? false),
+                    'qris' => ['enabled' => true, 'label' => 'QRIS'],
+                    'va' => ['enabled' => ! ($site->pakasir_qris_only ?? false), 'label' => 'Virtual Account'],
+                    'ewallet' => ['enabled' => ! ($site->pakasir_qris_only ?? false), 'label' => 'E-Wallet'],
                 ],
                 'qris_only' => (bool) ($site->pakasir_qris_only ?? false),
             ],
             Order::GATEWAY_EQRIS => [
                 'enabled' => (bool) ($site->eqris_enabled ?? false) && $this->eqris->isConfigured(),
                 'configured' => $this->eqris->isConfigured(),
+                'label' => $site->eqris_display_name ?: 'Eqris',
+                'subtitle' => $site->eqris_subtitle ?: 'QRIS Multi-Bank',
                 'methods' => [
-                    Order::EQRIS_METHOD_ORKUT => (bool) ($site->eqris_method_orkut_enabled ?? true) && $this->eqris->isOrkutConfigured(),
-                    Order::EQRIS_METHOD_GOMERCH => (bool) ($site->eqris_method_gomerch_enabled ?? false) && $this->eqris->isGomerchConfigured(),
+                    Order::EQRIS_METHOD_ORKUT => [
+                        'enabled' => (bool) ($site->eqris_method_orkut_enabled ?? true) && $this->eqris->isOrkutConfigured(),
+                        'label' => $site->eqris_orkut_display_name ?: 'Orkut (NobuBank)',
+                        'subtitle' => $site->eqris_orkut_subtitle ?: 'QRIS via NobuBank',
+                    ],
+                    Order::EQRIS_METHOD_GOMERCH => [
+                        'enabled' => (bool) ($site->eqris_method_gomerch_enabled ?? false) && $this->eqris->isGomerchConfigured(),
+                        'label' => $site->eqris_gomerch_display_name ?: 'Gomerch (Multi-Bank)',
+                        'subtitle' => $site->eqris_gomerch_subtitle ?: 'QRIS Multi-Bank dinamis',
+                    ],
                 ],
             ],
             Order::GATEWAY_WALLET => [
                 'enabled' => (bool) ($site->wallet_checkout_enabled ?? true),
+                'label' => $site->wallet_display_name ?: 'Saldo Akun',
+                'subtitle' => $site->wallet_subtitle ?: 'Bebas fee — pakai saldo deposit',
                 'members_only' => (bool) ($site->wallet_checkout_members_only ?? true),
             ],
         ];
+    }
+
+    /**
+     * Daftar method Eqris yang aktif (untuk UI dropdown).
+     *
+     * @return array<int, array{code:string,label:string,subtitle:string}>
+     */
+    public function activeEqrisMethods(): array
+    {
+        $methods = $this->availability()[Order::GATEWAY_EQRIS]['methods'] ?? [];
+        $out = [];
+        foreach ($methods as $code => $meta) {
+            if (! empty($meta['enabled'])) {
+                $out[] = [
+                    'code' => $code,
+                    'label' => $meta['label'],
+                    'subtitle' => $meta['subtitle'] ?? '',
+                ];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -118,10 +151,10 @@ class PaymentGatewayManager
             }
             $methods = $a[Order::GATEWAY_EQRIS]['methods'];
             $method = $requestedMethod;
-            if (! $method || empty($methods[$method])) {
+            if (! $method || empty($methods[$method]['enabled'])) {
                 // Pilih method aktif pertama.
-                foreach ($methods as $m => $on) {
-                    if ($on) {
+                foreach ($methods as $m => $meta) {
+                    if (! empty($meta['enabled'])) {
                         $method = $m;
                         break;
                     }
