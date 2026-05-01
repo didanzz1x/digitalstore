@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\AffiliateService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -89,14 +90,36 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone' => ['required', 'string', 'max:32', 'regex:/^[0-9+\- ]+$/'],
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
+            'ref' => ['nullable', 'string', 'max:32'],
         ]);
+
+        // Resolve referrer dari (1) form 'ref' field kalau ada, (2) cookie/query yang sudah disimpan
+        // saat user klik link referral sebelum daftar.
+        $referrer = null;
+        if (AffiliateService::isEnabled()) {
+            if (! empty($data['ref'])) {
+                $referrer = User::where('referral_code', strtoupper(trim($data['ref'])))->first();
+            }
+            $referrer ??= AffiliateService::resolveReferrerFromRequest($request, null);
+        }
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => Hash::make($data['password']),
+            'referred_by_id' => $referrer?->id,
         ]);
+
+        // Generate referral code unik untuk user baru — langsung tersedia di dashboard.
+        $user->ensureReferralCode();
+
+        if ($referrer) {
+            Audit::log('user.referred', $user, [
+                'referrer_id' => $referrer->id,
+                'referrer_email' => $referrer->email,
+            ]);
+        }
 
         Auth::login($user);
         $request->session()->regenerate();

@@ -26,6 +26,16 @@ class Order extends Model
 
     public const SOURCE_TELEGRAM = 'telegram';
 
+    public const GATEWAY_PAKASIR = 'pakasir';
+
+    public const GATEWAY_EQRIS = 'eqris';
+
+    public const GATEWAY_WALLET = 'wallet';
+
+    public const EQRIS_METHOD_ORKUT = 'orkut';
+
+    public const EQRIS_METHOD_GOMERCH = 'gomerch';
+
     protected $fillable = [
         'order_code',
         'user_id',
@@ -44,6 +54,15 @@ class Order extends Model
         'payment_ref',
         'payment_qr_string',
         'telegram_qr_message_id',
+        'gateway',
+        'eqris_method',
+        'eqris_transaction_id',
+        'eqris_qr_amount',
+        'is_member_subscription',
+        'referral_user_id',
+        'affiliate_amount',
+        'affiliate_credited',
+        'pay_with_balance',
         'source',
         'status',
         'paid_at',
@@ -57,6 +76,11 @@ class Order extends Model
             'discount_amount' => 'integer',
             'fee' => 'integer',
             'total_payment' => 'integer',
+            'eqris_qr_amount' => 'integer',
+            'affiliate_amount' => 'integer',
+            'is_member_subscription' => 'boolean',
+            'affiliate_credited' => 'boolean',
+            'pay_with_balance' => 'boolean',
             'paid_at' => 'datetime',
             'expired_at' => 'datetime',
         ];
@@ -95,6 +119,16 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function referralUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'referral_user_id');
+    }
+
+    public function memberSubscription(): HasOne
+    {
+        return $this->hasOne(MemberSubscription::class);
     }
 
     /**

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AffiliateController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\FloatingNotificationController;
 use App\Http\Controllers\FonnteWebhookController;
 use App\Http\Controllers\FrontController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\PakasirWebhookController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\TelegramBotController;
@@ -36,6 +38,20 @@ Route::post('/checkout', [CheckoutController::class, 'store'])
 // Halaman invoice publik (akses via order_code random, tidak dapat ditebak).
 Route::get('/invoice/{orderCode}', [InvoiceController::class, 'show'])
     ->name('invoice.show');
+
+// Polling status pembayaran via web (untuk halaman invoice). Versi /api/* ada di routes/api.php.
+Route::get('/invoice/{orderCode}/check', [InvoiceController::class, 'check'])
+    ->middleware('throttle:60,1')
+    ->name('invoice.check');
+
+// Membership landing & subscribe.
+Route::get('/membership', [MembershipController::class, 'show'])->name('membership.show');
+Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
+    ->middleware(['auth', 'throttle:5,1'])
+    ->name('membership.subscribe');
+
+// Halaman docs API publik (free read).
+Route::view('/api-docs', 'api-docs')->name('api.docs');
 
 // Webhook dari Pakasir.
 Route::post('/webhooks/pakasir', [PakasirWebhookController::class, 'handle'])
@@ -96,6 +112,13 @@ Route::middleware('auth')->prefix('akun')->name('account.')->group(function () {
     Route::get('/telegram', [TelegramBotController::class, 'showLinkPage'])->name('telegram.show');
     Route::post('/telegram/generate', [TelegramBotController::class, 'generateToken'])->name('telegram.generate');
     Route::post('/telegram/unlink', [TelegramBotController::class, 'unlink'])->name('telegram.unlink');
+
+    // Affiliate dashboard.
+    Route::get('/affiliate', [AffiliateController::class, 'dashboard'])->name('affiliate.dashboard');
+    Route::post('/affiliate/transfer', [AffiliateController::class, 'transfer'])
+        ->middleware('throttle:6,1')->name('affiliate.transfer');
+    Route::post('/affiliate/withdraw', [AffiliateController::class, 'withdraw'])
+        ->middleware('throttle:6,1')->name('affiliate.withdraw');
 });
 
 // ======== Cart (hanya user login — guest pakai checkout instan) ========

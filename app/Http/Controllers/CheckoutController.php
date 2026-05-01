@@ -6,8 +6,15 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\SiteSetting;
+use App\Models\User;
 use App\Models\Voucher;
+use App\Models\WalletTransaction;
+use App\Services\AffiliateService;
+use App\Services\OrderFulfillment;
 use App\Services\PakasirService;
+use App\Services\PaymentGatewayManager;
+use App\Services\WalletService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +24,10 @@ use Illuminate\View\View;
 
 class CheckoutController extends Controller
 {
-    public function __construct(protected PakasirService $pakasir) {}
+    public function __construct(
+        protected PakasirService $pakasir,
+        protected PaymentGatewayManager $gateways,
+    ) {}
 
     /**
      * GET /checkout/{product}/{variant}
@@ -42,6 +52,9 @@ class CheckoutController extends Controller
             'product' => $product,
             'variant' => $variant,
             'available' => $available,
+            'gateways' => $this->gateways->availability(),
+            'defaultGateway' => $this->gateways->defaultGateway(),
+            'walletEligible' => $this->isWalletEligible(),
         ]);
     }
 
@@ -65,6 +78,8 @@ class CheckoutController extends Controller
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:32', 'regex:/^[0-9+\- ]+$/'],
             'voucher_code' => ['nullable', 'string', 'max:64'],
+            'gateway' => ['nullable', 'string', 'in:pakasir,eqris,wallet'],
+            'eqris_method' => ['nullable', 'string', 'in:orkut,gomerch'],
         ]);
 
         /** @var ProductVariant $variant */
@@ -103,7 +118,39 @@ class CheckoutController extends Controller
         $total = max(0, $amount - $discount) + $fee;
         $userId = Auth::id();
 
-        $order = DB::transaction(function () use ($variant, $data, $amount, $discount, $fee, $total, $userId, $voucher) {
+        // Resolve gateway pilihan buyer.
+        $payWithBalance = ($data['gateway'] ?? null) === Order::GATEWAY_WALLET;
+        $resolvedGateway = null;
+        $resolvedMethod = null;
+        if (! $payWithBalance) {
+            $resolved = $this->gateways->resolve($data['gateway'] ?? null, $data['eqris_method'] ?? null);
+            if (! $resolved) {
+                return back()->withInput()->withErrors([
+                    'gateway' => 'Metode pembayaran yang dipilih tidak tersedia. Silakan pilih ulang.',
+                ]);
+            }
+            [$resolvedGateway, $resolvedMethod] = $resolved;
+        } else {
+            // Validasi wallet eligibility.
+            if (! $this->isWalletEligible()) {
+                return back()->withInput()->withErrors([
+                    'gateway' => 'Pembayaran via saldo hanya untuk member aktif (kalau opsi member-only diaktifkan).',
+                ]);
+            }
+            if ($total > (int) Auth::user()->balance) {
+                return back()->withInput()->withErrors([
+                    'gateway' => 'Saldo tidak cukup untuk membayar order ini.',
+                ]);
+            }
+            $resolvedGateway = Order::GATEWAY_WALLET;
+        }
+
+        // Resolve referrer dari cookie/query string saat checkout. Untuk user
+        // yang sudah punya referrer terdaftar, gunakan itu; kalau belum,
+        // ambil dari cookie (first-touch).
+        $referrerId = $this->resolveReferrerId($request, $userId);
+
+        $order = DB::transaction(function () use ($variant, $data, $amount, $discount, $fee, $total, $userId, $voucher, $resolvedGateway, $resolvedMethod, $payWithBalance, $referrerId) {
             $order = Order::create([
                 'order_code' => Order::generateOrderCode(),
                 'user_id' => $userId, // null untuk guest
@@ -116,6 +163,10 @@ class CheckoutController extends Controller
                 'discount_amount' => $discount,
                 'fee' => $fee,
                 'total_payment' => $total,
+                'gateway' => $resolvedGateway,
+                'eqris_method' => $resolvedMethod,
+                'pay_with_balance' => $payWithBalance,
+                'referral_user_id' => $referrerId,
                 'status' => Order::STATUS_PENDING,
                 'source' => Order::SOURCE_WEB,
                 'expired_at' => now()->addMinutes(
@@ -145,13 +196,107 @@ class CheckoutController extends Controller
             'amount' => $amount,
             'variant' => $variant->name,
             'product' => $variant->product?->name,
+            'gateway' => $resolvedGateway,
         ]);
 
+        // Pembayaran via saldo — langsung debit + tandai PAID + assign stok.
+        if ($payWithBalance) {
+            return $this->handleWalletPayment($order);
+        }
+
         // Redirect ke invoice publik kita sendiri — QRIS akan di-render di
-        // halaman tersebut via PakasirService::createQrisTransaction(). User
-        // tidak perlu redirect ke halaman hosted Pakasir.
+        // halaman tersebut sesuai gateway yang dipilih.
         return redirect()
             ->route('invoice.show', $order->order_code)
             ->with('success', 'Order berhasil dibuat. Scan QRIS di bawah untuk membayar.');
+    }
+
+    /**
+     * Eligibility wallet checkout: harus login + (opsional) harus active member.
+     */
+    protected function isWalletEligible(): bool
+    {
+        if (! Auth::check()) {
+            return false;
+        }
+        $site = SiteSetting::current();
+        if (! ($site->wallet_checkout_enabled ?? true)) {
+            return false;
+        }
+        if ($site->wallet_checkout_members_only ?? true) {
+            /** @var User $user */
+            $user = Auth::user();
+            if (! $user->isActiveMember()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function resolveReferrerId(Request $request, ?int $userId): ?int
+    {
+        if (! AffiliateService::isEnabled()) {
+            return null;
+        }
+
+        // User yg sudah login — prioritas pakai user.referred_by_id (sudah di-attach saat register).
+        if ($userId) {
+            $user = User::find($userId);
+            if ($user && $user->referred_by_id) {
+                return (int) $user->referred_by_id;
+            }
+        }
+
+        $referrer = AffiliateService::resolveReferrerFromRequest($request, $userId);
+
+        return $referrer?->id;
+    }
+
+    protected function handleWalletPayment(Order $order): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($order) {
+                /** @var User $user */
+                $user = User::lockForUpdate()->find($order->user_id);
+                $total = (int) $order->total_payment;
+                if ((int) $user->balance < $total) {
+                    throw new \InvalidArgumentException('Saldo tidak cukup');
+                }
+
+                WalletService::debit(
+                    user: $user,
+                    amount: $total,
+                    type: WalletTransaction::TYPE_SPEND,
+                    note: 'Bayar order '.$order->order_code,
+                    orderId: $order->id,
+                );
+
+                $order->forceFill([
+                    'payment_method' => Order::GATEWAY_WALLET,
+                    'gateway' => Order::GATEWAY_WALLET,
+                ])->save();
+            });
+
+            app(OrderFulfillment::class)->markPaidAndAssignStock($order, [
+                'amount' => (int) $order->total_payment,
+                'payment_method' => Order::GATEWAY_WALLET,
+                'source' => 'wallet_checkout',
+            ]);
+
+            return redirect()
+                ->route('invoice.show', $order->order_code)
+                ->with('success', 'Pembayaran via saldo berhasil. Akun akan dikirim sebentar lagi.');
+        } catch (\Throwable $e) {
+            $order->forceFill(['status' => Order::STATUS_FAILED])->save();
+            \Log::error('Wallet checkout failed', [
+                'order' => $order->order_code,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('invoice.show', $order->order_code)
+                ->with('error', 'Pembayaran via saldo gagal: '.$e->getMessage());
+        }
     }
 }

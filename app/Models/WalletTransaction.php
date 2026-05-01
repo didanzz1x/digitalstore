@@ -20,6 +20,10 @@ class WalletTransaction extends Model
 
     public const TYPE_ADMIN_DEDUCT = 'admin_deduct';
 
+    public const TYPE_AFFILIATE_TRANSFER = 'affiliate_transfer';
+
+    public const TYPE_MEMBERSHIP = 'membership';
+
     protected $fillable = [
         'user_id',
         'type',
@@ -63,6 +67,8 @@ class WalletTransaction extends Model
             self::TYPE_SPEND => 'Bayar Pakai Saldo',
             self::TYPE_ADMIN_TOPUP => 'Top-up Admin',
             self::TYPE_ADMIN_DEDUCT => 'Pengurangan Admin',
+            self::TYPE_AFFILIATE_TRANSFER => 'Transfer dari Komisi Affiliate',
+            self::TYPE_MEMBERSHIP => 'Pembayaran Membership',
             default => $this->type,
         };
     }

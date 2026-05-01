@@ -108,6 +108,33 @@ class OrderFulfillment
             app(TelegramBotService::class)->notifyAdminOrderPaid($order->fresh());
         }
 
+        // Side effects post-PAID (di luar transaction utama biar tidak block):
+        //  - Aktifkan membership kalau order ini subscription.
+        //  - Credit komisi affiliate ke referrer kalau order ini punya referral_user_id.
+        if ($result && $transitionedToPaid) {
+            $fresh = $order->fresh();
+            if ($fresh) {
+                if ($fresh->is_member_subscription) {
+                    try {
+                        app(MembershipService::class)->activateFromOrder($fresh);
+                    } catch (\Throwable $e) {
+                        \Log::error('Membership activation failed', [
+                            'order_id' => $fresh->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+                try {
+                    app(AffiliateService::class)->creditForOrder($fresh);
+                } catch (\Throwable $e) {
+                    \Log::error('Affiliate commission credit failed', [
+                        'order_id' => $fresh->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         // Auto-kirim kredensial via Fonnte WA — di luar transaction supaya HTTP call
         // tidak block lock DB. Service handle exception sendiri (return false, gak throw).
         if ($result && $assignedStock) {

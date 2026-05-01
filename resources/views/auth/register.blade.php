@@ -9,8 +9,18 @@
             <h1 class="text-2xl font-extrabold tracking-tight">Daftar Akun</h1>
             <p class="text-sm text-slate-500 mt-1">Gratis & cepat. History pesanan kamu langsung tersimpan.</p>
 
+            @php $refCookie = request()->cookie(\App\Services\AffiliateService::COOKIE_NAME) ?: request()->query('ref'); @endphp
+            @if (! empty($refCookie))
+                <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    Daftar via referral kode: <b>{{ $refCookie }}</b>
+                </div>
+            @endif
+
             <form method="POST" action="{{ route('register.attempt') }}" class="mt-6 space-y-4">
                 @csrf
+                @if (! empty($refCookie))
+                    <input type="hidden" name="ref" value="{{ $refCookie }}">
+                @endif
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 mb-1.5" for="name">Nama Lengkap</label>
                     <input type="text" id="name" name="name" required autofocus value="{{ old('name') }}"

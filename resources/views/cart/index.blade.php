@@ -92,6 +92,42 @@
                            class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase">
                 </div>
 
+                @php
+                    $availableGateways = collect($gateways ?? [])->filter(fn ($g) => ! empty($g['enabled']) && ! empty($g['configured']));
+                    $effectiveDefault = old('gateway', $defaultGateway ?? $availableGateways->keys()->first());
+                @endphp
+                @if ($availableGateways->isNotEmpty())
+                    <div>
+                        <label class="text-xs font-semibold text-slate-700 block mb-1">Metode Pembayaran</label>
+                        <div class="grid grid-cols-1 gap-2">
+                            @if ($availableGateways->has('pakasir'))
+                                <label class="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
+                                    <input type="radio" name="gateway" value="pakasir" @checked($effectiveDefault === 'pakasir')>
+                                    <span class="text-sm"><b>Pakasir</b> · QRIS / VA / E-Wallet</span>
+                                </label>
+                            @endif
+                            @if ($availableGateways->has('eqris'))
+                                @php $eqrisMethods = $availableGateways['eqris']['methods'] ?? []; @endphp
+                                <label class="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
+                                    <input type="radio" name="gateway" value="eqris" @checked($effectiveDefault === 'eqris')>
+                                    <span class="text-sm"><b>Eqris</b> · QRIS Multi-Bank</span>
+                                </label>
+                                @if (count($eqrisMethods) === 1)
+                                    <input type="hidden" name="eqris_method" value="{{ $eqrisMethods[0] }}">
+                                @endif
+                            @endif
+                            @auth
+                                @if ($walletEligible ?? false)
+                                    <label class="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 cursor-pointer">
+                                        <input type="radio" name="gateway" value="wallet" @checked(old('gateway') === 'wallet')>
+                                        <span class="text-sm"><b>Saldo Akun</b> · bebas fee (saldo Rp {{ number_format((int) auth()->user()->balance, 0, ',', '.') }})</span>
+                                    </label>
+                                @endif
+                            @endauth
+                        </div>
+                    </div>
+                @endif
+
                 <div class="border-t border-slate-100 pt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                         <div class="text-xs text-slate-500">Total ({{ $items->count() }} item)</div>

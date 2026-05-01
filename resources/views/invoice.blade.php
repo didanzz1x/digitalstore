@@ -105,10 +105,6 @@
                             <span class="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">PAKASIR</span>
                         </div>
                         @php
-                            // Pakasir tambah biaya admin di atas total_payment kita.
-                            // Tampilkan amount yang Pakasir kembalikan (sudah termasuk
-                            // fee) supaya match dengan yang akan ditagih e-wallet
-                            // user saat scan QR.
                             $qrAmount = (int) ($qris['total_payment'] ?? $order->total_payment);
                             $qrFee = (int) ($qris['fee'] ?? 0);
                         @endphp
@@ -123,8 +119,6 @@
                             <div class="mb-3"></div>
                         @endif
                         <div class="inline-block p-3 bg-white border border-slate-200 rounded-xl shadow-card">
-                            {{-- Render QR sebagai PNG via api.qrserver.com (sama dengan
-                                 yang dipakai Telegram bot). Tidak butuh JS / CDN library. --}}
                             <img
                                 src="https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=10&ecc=M&data={{ urlencode($qris['payment_number']) }}"
                                 alt="QRIS — Rp {{ number_format($qrAmount, 0, ',', '.') }}"
@@ -141,12 +135,57 @@
                             <textarea readonly class="w-full mt-2 text-[10px] font-mono p-2 border border-slate-200 rounded bg-slate-50 break-all" rows="3">{{ $qris['payment_number'] }}</textarea>
                         </details>
                     </div>
+                @elseif (! empty($eqrisQr) && ! empty($eqrisQr['qr_string']))
+                    <div class="mt-6 bg-white border border-slate-200 rounded-xl p-5 text-center">
+                        <div class="flex items-center justify-center gap-2 mb-2">
+                            <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Bayar dengan QRIS</div>
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">EQRIS · {{ strtoupper($eqrisQr['method'] ?? 'ORKUT') }}</span>
+                        </div>
+                        @php $eqrisAmount = (int) ($eqrisQr['amount'] ?? $order->total_payment); @endphp
+                        <div class="text-2xl font-extrabold text-slate-900 mb-1">
+                            Rp {{ number_format($eqrisAmount, 0, ',', '.') }}
+                        </div>
+                        <div class="text-[11px] text-slate-500 mb-3">Bayar persis dengan jumlah ini agar pembayaran terkonfirmasi.</div>
+                        <div class="inline-block p-3 bg-white border border-slate-200 rounded-xl shadow-card">
+                            <img
+                                src="https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=10&ecc=M&data={{ urlencode($eqrisQr['qr_string']) }}"
+                                alt="QRIS Eqris — Rp {{ number_format($eqrisAmount, 0, ',', '.') }}"
+                                class="block mx-auto"
+                                style="width: 240px; height: 240px;"
+                                loading="eager"
+                            >
+                        </div>
+                        <div class="mt-3 text-xs text-slate-500">
+                            Scan QR di atas pakai aplikasi e-wallet / m-banking (GoPay, OVO, Dana, BCA, dll).
+                        </div>
+                    </div>
                 @endif
 
                 <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                     <div class="font-bold">Menunggu pembayaran...</div>
-                    <div class="mt-1">Halaman ini akan refresh otomatis setiap 15 detik. Jika sudah bayar tapi status belum berubah, tunggu beberapa detik lagi.</div>
+                    <div class="mt-1">Halaman ini akan otomatis refresh saat pembayaran terdeteksi. Jika sudah bayar tapi status belum berubah, tunggu beberapa detik lagi.</div>
                 </div>
+
+                <script>
+                    (function () {
+                        var url = "{{ route('invoice.check', $order->order_code) }}";
+                        var attempts = 0, max = 360; // ~30 menit @ 5s
+                        function tick() {
+                            attempts++;
+                            fetch(url, { headers: { 'Accept': 'application/json' } })
+                                .then(function (r) { return r.json(); })
+                                .then(function (data) {
+                                    if (data && data.paid) {
+                                        location.reload();
+                                    } else if (attempts < max) {
+                                        setTimeout(tick, 5000);
+                                    }
+                                })
+                                .catch(function () { if (attempts < max) setTimeout(tick, 8000); });
+                        }
+                        setTimeout(tick, 5000);
+                    })();
+                </script>
             @endif
 
             @if ($order->isPaid())
