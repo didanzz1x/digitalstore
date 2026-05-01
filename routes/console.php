@@ -35,3 +35,14 @@ Schedule::command('backup:monitor')
     ->daily()
     ->at('09:00')
     ->timezone('Asia/Jakarta');
+
+// Polling Eqris setiap menit (Eqris tidak ada webhook, harus polling /api/mutasi-orkut-v2).
+Schedule::command('eqris:poll-pending')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Expire membership overdue tiap jam.
+Schedule::command('membership:expire-overdue')
+    ->hourly()
+    ->withoutOverlapping();

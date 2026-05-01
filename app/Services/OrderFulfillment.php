@@ -7,6 +7,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Stock;
+use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Support\Audit;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -106,6 +108,80 @@ class OrderFulfillment
         // pada idempotent retry (saat order sudah PAID dari sebelumnya).
         if ($result && $transitionedToPaid) {
             app(TelegramBotService::class)->notifyAdminOrderPaid($order->fresh());
+        }
+
+        // Side effects post-PAID (di luar transaction utama biar tidak block):
+        //  - Aktifkan membership kalau order ini subscription.
+        //  - Credit saldo wallet kalau order ini self-service top-up.
+        //  - Aktifkan akun pending kalau order ini register paywall.
+        //  - Credit komisi affiliate ke referrer kalau order ini punya referral_user_id.
+        if ($result && $transitionedToPaid) {
+            $fresh = $order->fresh();
+            if ($fresh) {
+                if ($fresh->is_member_subscription) {
+                    try {
+                        app(MembershipService::class)->activateFromOrder($fresh);
+                    } catch (\Throwable $e) {
+                        \Log::error('Membership activation failed', [
+                            'order_id' => $fresh->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                if ($fresh->is_wallet_topup && $fresh->user_id) {
+                    try {
+                        $user = User::find($fresh->user_id);
+                        if ($user) {
+                            // Idempotent: only credit kalau belum ada transaction utk order ini.
+                            $exists = WalletTransaction::where('order_id', $fresh->id)
+                                ->where('type', WalletTransaction::TYPE_DEPOSIT)
+                                ->exists();
+                            if (! $exists) {
+                                WalletService::credit(
+                                    user: $user,
+                                    amount: (int) $fresh->total_payment,
+                                    type: WalletTransaction::TYPE_DEPOSIT,
+                                    note: 'Top up via '.($fresh->gateway ?: 'gateway'),
+                                    orderId: $fresh->id,
+                                );
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Wallet topup credit failed', [
+                            'order_id' => $fresh->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                if ($fresh->is_register_activation && $fresh->user_id) {
+                    try {
+                        $user = User::find($fresh->user_id);
+                        if ($user && $user->is_pending_activation) {
+                            $user->forceFill([
+                                'is_pending_activation' => false,
+                                'email_verified_at' => $user->email_verified_at ?? now(),
+                            ])->save();
+                            Audit::log('user.register_activated', $user, ['order_id' => $fresh->id]);
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Register activation failed', [
+                            'order_id' => $fresh->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                try {
+                    app(AffiliateService::class)->creditForOrder($fresh);
+                } catch (\Throwable $e) {
+                    \Log::error('Affiliate commission credit failed', [
+                        'order_id' => $fresh->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         // Auto-kirim kredensial via Fonnte WA — di luar transaction supaya HTTP call

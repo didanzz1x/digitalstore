@@ -92,6 +92,15 @@
                            class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase">
                 </div>
 
+                @include('_partials.gateway-selector', [
+                    'availableGateways' => $gateways ?? [],
+                    'defaultGateway' => $defaultGateway ?? null,
+                    'walletEligible' => $walletEligible ?? false,
+                    'walletBalance' => (int) (auth()->user()->balance ?? 0),
+                    'walletAmountRequired' => (int) $subtotal,
+                    'walletTopupEnabled' => (bool) ($site->wallet_topup_enabled ?? true),
+                ])
+
                 <div class="border-t border-slate-100 pt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                         <div class="text-xs text-slate-500">Total ({{ $items->count() }} item)</div>

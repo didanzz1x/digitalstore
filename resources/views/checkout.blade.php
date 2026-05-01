@@ -85,10 +85,19 @@
                     <p class="text-xs text-slate-500 mt-1">Punya kode promo? Masukkan untuk dapat diskon.</p>
                 </div>
 
+                @include('_partials.gateway-selector', [
+                    'availableGateways' => $gateways ?? [],
+                    'defaultGateway' => $defaultGateway ?? null,
+                    'walletEligible' => $walletEligible ?? false,
+                    'walletBalance' => (int) (auth()->user()->balance ?? 0),
+                    'walletAmountRequired' => (int) $effective,
+                    'walletTopupEnabled' => (bool) ($site->wallet_topup_enabled ?? true),
+                ])
+
                 <button type="submit" class="w-full rounded-xl btn-brand font-extrabold text-base px-4 py-3 transition">
                     Bayar Sekarang
                 </button>
-                <p class="text-xs text-slate-500 text-center">Kamu akan diarahkan ke halaman pembayaran Pakasir yang aman.</p>
+                <p class="text-xs text-slate-500 text-center">Kamu akan diarahkan ke halaman pembayaran yang aman.</p>
             </form>
         </div>
 

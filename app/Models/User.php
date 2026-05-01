@@ -6,9 +6,11 @@ use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -46,6 +48,10 @@ class User extends Authenticatable implements FilamentUser
             'is_banned' => 'boolean',
             'banned_at' => 'datetime',
             'balance' => 'integer',
+            'affiliate_balance' => 'integer',
+            'is_member' => 'boolean',
+            'is_pending_activation' => 'boolean',
+            'member_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
         ];
     }
@@ -62,6 +68,75 @@ class User extends Authenticatable implements FilamentUser
     public function walletTransactions(): HasMany
     {
         return $this->hasMany(WalletTransaction::class);
+    }
+
+    public function referrer(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'referred_by_id');
+    }
+
+    public function referrals(): HasMany
+    {
+        return $this->hasMany(self::class, 'referred_by_id');
+    }
+
+    public function affiliateCommissions(): HasMany
+    {
+        return $this->hasMany(AffiliateCommission::class);
+    }
+
+    public function affiliateWithdrawals(): HasMany
+    {
+        return $this->hasMany(AffiliateWithdrawal::class);
+    }
+
+    public function memberSubscriptions(): HasMany
+    {
+        return $this->hasMany(MemberSubscription::class);
+    }
+
+    /**
+     * True jika user sedang aktif sebagai member berbayar.
+     */
+    public function isActiveMember(): bool
+    {
+        if (! $this->is_member) {
+            return false;
+        }
+        if ($this->member_expires_at && $this->member_expires_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Generate referral_code unik untuk user (idempotent — return existing kalau sudah ada).
+     * Pakai charset uppercase alfanumerik 8 char.
+     */
+    public function ensureReferralCode(): string
+    {
+        if (! empty($this->referral_code)) {
+            return $this->referral_code;
+        }
+
+        for ($i = 0; $i < 5; $i++) {
+            $code = strtoupper(Str::random(8));
+            if (! self::where('referral_code', $code)->exists()) {
+                $this->forceFill(['referral_code' => $code])->save();
+
+                return $code;
+            }
+        }
+
+        // Fallback yang dijamin unik (10 char).
+        do {
+            $code = strtoupper(Str::random(10));
+        } while (self::where('referral_code', $code)->exists());
+
+        $this->forceFill(['referral_code' => $code])->save();
+
+        return $code;
     }
 
     /**

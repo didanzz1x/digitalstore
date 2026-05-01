@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -133,10 +134,43 @@ class ManageSiteSettings extends Page implements HasForms
                             ->columnSpanFull(),
                     ]),
 
+                Section::make('Payment Gateway — Master Switch')
+                    ->description('Pilih gateway mana yang aktif. Kalau dua-duanya aktif, buyer pilih di halaman checkout.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('pakasir_enabled')
+                            ->label('Aktifkan Pakasir')
+                            ->default(true)
+                            ->helperText('Pakasir QRIS / VA / E-Wallet — pakai webhook untuk konfirmasi.'),
+                        Toggle::make('eqris_enabled')
+                            ->label('Aktifkan Eqris (Orkut/Gomerch)')
+                            ->default(false)
+                            ->helperText('eqris.com QRIS dinamis — pakai polling karena tidak ada webhook.'),
+                        Select::make('payment_default_gateway')
+                            ->label('Default Gateway')
+                            ->options([
+                                'pakasir' => 'Pakasir',
+                                'eqris' => 'Eqris',
+                            ])
+                            ->default('pakasir')
+                            ->helperText('Dipilih otomatis kalau buyer tidak memilih, atau kalau hanya satu gateway aktif.')
+                            ->columnSpanFull(),
+                    ]),
+
                 Section::make('Pakasir Payment Gateway')
                     ->description('Slug project & API key Pakasir. Daftar di https://pakasir.com/p/docs untuk dapat kredensial. Akan override ENV (PAKASIR_PROJECT/PAKASIR_API_KEY) kalau diisi.')
                     ->columns(2)
                     ->schema([
+                        TextInput::make('pakasir_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Server 2')
+                            ->helperText('Nama yang ditampilkan ke buyer di halaman checkout. Contoh: "Server 2", "Pakasir", dll.')
+                            ->default('Pakasir'),
+                        TextInput::make('pakasir_subtitle')
+                            ->label('Subtitle / Deskripsi Singkat')
+                            ->placeholder('QRIS / VA / E-Wallet')
+                            ->helperText('Subtitle kecil di bawah nama gateway.')
+                            ->default('QRIS / VA / E-Wallet'),
                         TextInput::make('pakasir_project')
                             ->label('Project Slug')
                             ->placeholder('akhpremium')
@@ -165,6 +199,222 @@ class ManageSiteSettings extends Page implements HasForms
                             ->helperText('Kosongkan untuk pakai default. Hanya isi kalau Pakasir kasih URL khusus / sandbox.')
                             ->url()
                             ->columnSpanFull(),
+                    ]),
+
+                Section::make('Eqris Payment Gateway (Orkut + Gomerch)')
+                    ->description('Konfigurasi eqris.com. Token API tunggal untuk semua endpoint. Orkut = QRIS Nobu Bank, Gomerch = QRIS dinamis multi-bank. Daftar di https://eqris.com/api-docs')
+                    ->columns(2)
+                    ->schema([
+                        TextInput::make('eqris_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Server 1')
+                            ->helperText('Nama gateway Eqris yang ditampilkan ke buyer. Contoh: "Server 1", "Eqris", dll.')
+                            ->default('Eqris'),
+                        TextInput::make('eqris_subtitle')
+                            ->label('Subtitle / Deskripsi Singkat')
+                            ->placeholder('QRIS Multi-Bank')
+                            ->default('QRIS Multi-Bank'),
+                        TextInput::make('eqris_orkut_display_name')
+                            ->label('Orkut — Display Name')
+                            ->placeholder('Orkut (NobuBank)')
+                            ->helperText('Nama metode Orkut. Contoh: "Orkut", "NobuBank QRIS", dll.')
+                            ->default('Orkut (NobuBank)'),
+                        TextInput::make('eqris_orkut_subtitle')
+                            ->label('Orkut — Subtitle')
+                            ->placeholder('QRIS via NobuBank')
+                            ->default('QRIS via NobuBank'),
+                        TextInput::make('eqris_gomerch_display_name')
+                            ->label('Gomerch — Display Name')
+                            ->placeholder('Gomerch (Multi-Bank)')
+                            ->default('Gomerch (Multi-Bank)'),
+                        TextInput::make('eqris_gomerch_subtitle')
+                            ->label('Gomerch — Subtitle')
+                            ->placeholder('QRIS Multi-Bank dinamis')
+                            ->default('QRIS Multi-Bank dinamis'),
+                        TextInput::make('eqris_token_key')
+                            ->label('Eqris Token API')
+                            ->password()
+                            ->revealable()
+                            ->placeholder('Paste tokenKey dari dashboard Eqris')
+                            ->helperText('Disimpan terenkripsi di DB. Satu token dipakai untuk semua endpoint.')
+                            ->columnSpanFull(),
+                        TextInput::make('eqris_base_url')
+                            ->label('Eqris Base URL')
+                            ->placeholder('https://eqris.com')
+                            ->url()
+                            ->helperText('Kosongkan untuk pakai default https://eqris.com'),
+                        Toggle::make('eqris_method_orkut_enabled')
+                            ->label('Aktifkan metode Orkut')
+                            ->default(true),
+                        Toggle::make('eqris_method_gomerch_enabled')
+                            ->label('Aktifkan metode Gomerch')
+                            ->default(false)
+                            ->helperText('Gomerch = QRIS dinamis multi-bank. Saat ini disiapkan di backend tetapi tidak default aktif.'),
+                        TextInput::make('eqris_orkut_username')
+                            ->label('Orkut Username')
+                            ->placeholder('akhprem')
+                            ->helperText('Username akun Nobu Bank (untuk endpoint /api/key-orkut).'),
+                        TextInput::make('eqris_orkut_token')
+                            ->label('Orkut Token Auth')
+                            ->password()
+                            ->revealable()
+                            ->placeholder('mis. 2517030:xxxxx')
+                            ->helperText('Token auth dari Nobu Bank. Disimpan terenkripsi.'),
+                        Textarea::make('eqris_orkut_base_qr_string')
+                            ->label('Base QR String Orkut')
+                            ->rows(3)
+                            ->placeholder('00020101021126670016COM.NOBUBANK.WWW...')
+                            ->helperText('EMVCo QR string statis dari Nobu Bank. Disimpan terenkripsi.')
+                            ->columnSpanFull(),
+                        TextInput::make('eqris_gomerch_merchant_id')
+                            ->label('Gomerch Merchant ID')
+                            ->placeholder('Merchant ID untuk Gomerch QRIS dinamis'),
+                        TextInput::make('eqris_gomerch_merchant_phone')
+                            ->label('Gomerch Merchant Phone')
+                            ->placeholder('628xxx — nomor telepon merchant terdaftar di Gomerch'),
+                    ]),
+
+                Section::make('Membership Berbayar')
+                    ->description('Member premium dapat fitur khusus seperti checkout bebas fee menggunakan saldo. Pembayaran membership otomatis aktivasi setelah PAID.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('membership_enabled')
+                            ->label('Aktifkan Membership Berbayar')
+                            ->default(false)
+                            ->columnSpanFull(),
+                        TextInput::make('membership_label')
+                            ->label('Nama Paket Member')
+                            ->default('Member Premium')
+                            ->maxLength(64),
+                        TextInput::make('membership_price')
+                            ->label('Harga (Rp)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->default(50000),
+                        TextInput::make('membership_duration_days')
+                            ->label('Durasi (hari)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->default(30),
+                        RichEditor::make('membership_benefits_html')
+                            ->label('Benefit Member (ditampilkan di halaman /membership)')
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Wallet / Saldo Checkout')
+                    ->description('Kalau aktif, user dapat membayar order menggunakan saldo akun. Saldo diisi via deposit, refund, atau transfer dari komisi affiliate.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('wallet_checkout_enabled')
+                            ->label('Aktifkan Pembayaran via Saldo')
+                            ->default(true),
+                        Toggle::make('wallet_checkout_members_only')
+                            ->label('Hanya Untuk Member')
+                            ->default(true)
+                            ->helperText('Kalau ON, hanya member aktif yang bisa pakai saldo (sesuai promo "Checkout Bebas Fee — khusus member").'),
+                        TextInput::make('wallet_display_name')
+                            ->label('Display Name (Custom)')
+                            ->placeholder('Saldo Akun')
+                            ->default('Saldo Akun'),
+                        TextInput::make('wallet_subtitle')
+                            ->label('Subtitle')
+                            ->placeholder('Bebas fee — pakai saldo deposit')
+                            ->default('Bebas fee — pakai saldo deposit'),
+                    ]),
+
+                Section::make('Self-Service Top Up Saldo')
+                    ->description('User logged-in bisa top-up saldo sendiri tanpa approval admin. Setelah pembayaran terkonfirmasi, saldo otomatis bertambah.')
+                    ->columns(3)
+                    ->schema([
+                        Toggle::make('wallet_topup_enabled')
+                            ->label('Aktifkan Top Up')
+                            ->default(true)
+                            ->columnSpanFull(),
+                        TextInput::make('wallet_topup_min')
+                            ->label('Minimum Top Up (Rp)')
+                            ->numeric()
+                            ->minValue(1000)
+                            ->default(10000),
+                        TextInput::make('wallet_topup_max')
+                            ->label('Maksimum Top Up (Rp)')
+                            ->numeric()
+                            ->minValue(10000)
+                            ->default(5000000),
+                    ]),
+
+                Section::make('Daftar Akun Berbayar (Register Paywall)')
+                    ->description('Kalau aktif, halaman /register akan meminta pembayaran via QRIS sebelum akun aktif. User belum bisa login penuh sampai order register-activation PAID.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('register_paywall_enabled')
+                            ->label('Aktifkan Daftar Berbayar')
+                            ->default(false)
+                            ->helperText('Kalau OFF, register tetap gratis seperti biasa.')
+                            ->columnSpanFull(),
+                        TextInput::make('register_paywall_price')
+                            ->label('Harga Daftar (Rp)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->default(10000)
+                            ->helperText('Harga yang harus dibayar user baru sebelum akun aktif.'),
+                        TextInput::make('register_paywall_label')
+                            ->label('Label di Halaman Register')
+                            ->placeholder('Aktivasi Akun')
+                            ->default('Aktivasi Akun'),
+                        Textarea::make('register_paywall_description')
+                            ->label('Deskripsi (ditampilkan di form register)')
+                            ->rows(2)
+                            ->placeholder('Pendaftaran akun premium berbayar — bayar via QRIS untuk aktivasi.')
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Program Affiliate (Komisi Referral)')
+                    ->description('Setiap user dapat link referral. Saat ada order PAID dari hasil referral, sistem otomatis credit komisi % ke saldo affiliate referrer. Komisi bisa ditarik ke saldo utama atau ke rekening bank.')
+                    ->columns(2)
+                    ->schema([
+                        Toggle::make('affiliate_enabled')
+                            ->label('Aktifkan Program Affiliate')
+                            ->default(false)
+                            ->columnSpanFull(),
+                        TextInput::make('affiliate_commission_percent')
+                            ->label('Persentase Komisi (%)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->default(5)
+                            ->helperText('Default 5% dari total_payment.'),
+                        TextInput::make('affiliate_min_withdraw')
+                            ->label('Minimum Withdraw (Rp)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->default(50000),
+                        TextInput::make('affiliate_cookie_days')
+                            ->label('Masa Berlaku Cookie Referral (hari)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(365)
+                            ->default(30),
+                        Toggle::make('affiliate_bank_withdraw_enabled')
+                            ->label('Izinkan Withdraw ke Bank')
+                            ->default(true)
+                            ->helperText('Kalau OFF, user hanya bisa transfer komisi ke saldo utama.'),
+                        Toggle::make('affiliate_lifetime')
+                            ->label('Komisi Lifetime (semua order, bukan first-order saja)')
+                            ->default(true)
+                            ->helperText('Kalau OFF, hanya order PERTAMA dari referee yang dapat komisi.'),
+                    ]),
+
+                Section::make('Public API')
+                    ->description('REST API untuk integrasi pihak ketiga (mis. mengambil stok produk dari website lain). Auth via header X-API-KEY. Kelola API client di menu API Clients.')
+                    ->columns(1)
+                    ->schema([
+                        Toggle::make('public_api_enabled')
+                            ->label('Aktifkan Public API')
+                            ->default(false)
+                            ->columnSpanFull(),
+                        RichEditor::make('public_api_docs_html')
+                            ->label('Dokumentasi API (ditampilkan di /api-docs)')
+                            ->helperText('Kosongkan untuk pakai dokumentasi default.'),
                     ]),
 
                 Section::make('Sosial Proof — Fake Terjual')

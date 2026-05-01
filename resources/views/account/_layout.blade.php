@@ -18,12 +18,22 @@
                 <nav class="rounded-2xl bg-white border border-slate-200 p-2 text-sm">
                     @php
                         $rn = request()->route()?->getName();
+                        $site = \App\Models\SiteSetting::current();
                         $items = [
                             ['account.index', 'Dashboard', '🏠'],
                             ['account.orders.index', 'History Pesanan', '📦'],
                             ['account.profile', 'Profil & Password', '⚙️'],
                             ['account.telegram.show', 'Hubungkan Telegram', '✈️'],
                         ];
+                        if ($site->wallet_topup_enabled ?? true) {
+                            $items[] = ['account.topup.show', 'Top Up Saldo', '💳'];
+                        }
+                        if ($site->affiliate_enabled ?? false) {
+                            $items[] = ['account.affiliate.dashboard', 'Affiliate', '💰'];
+                        }
+                        if ($site->membership_enabled ?? false) {
+                            $items[] = ['membership.show', 'Membership', '⭐'];
+                        }
                     @endphp
                     @foreach ($items as [$route, $label, $icon])
                         <a href="{{ route($route) }}"
