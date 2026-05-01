@@ -22,7 +22,7 @@ class ApiClientResource extends Resource
 
     protected static ?string $modelLabel = 'API Client';
 
-    protected static ?string $navigationGroup = 'Public API';
+    protected static \UnitEnum|string|null $navigationGroup = 'Public API';
 
     protected static ?int $navigationSort = 40;
 

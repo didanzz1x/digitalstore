@@ -20,7 +20,7 @@ class AffiliateWithdrawalResource extends Resource
 
     protected static ?string $modelLabel = 'Withdrawal Affiliate';
 
-    protected static ?string $navigationGroup = 'Affiliate';
+    protected static \UnitEnum|string|null $navigationGroup = 'Affiliate';
 
     protected static ?int $navigationSort = 21;
 

@@ -20,7 +20,7 @@ class MemberSubscriptionResource extends Resource
 
     protected static ?string $modelLabel = 'Subscription Member';
 
-    protected static ?string $navigationGroup = 'Membership';
+    protected static \UnitEnum|string|null $navigationGroup = 'Membership';
 
     protected static ?int $navigationSort = 30;
 

@@ -20,7 +20,7 @@ class AffiliateCommissionResource extends Resource
 
     protected static ?string $modelLabel = 'Komisi Affiliate';
 
-    protected static ?string $navigationGroup = 'Affiliate';
+    protected static \UnitEnum|string|null $navigationGroup = 'Affiliate';
 
     protected static ?int $navigationSort = 20;
 
